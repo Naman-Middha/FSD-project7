@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Code Breaker — The Array Heist</title>
+  <style>
+    :root{--cell-size:64px;--gap:10px;--bg:#0b1020;--panel:#0f1724;--accent:#7ee787;--danger:#ff6b6b;--muted:#94a3b8}
+    *{box-sizing:border-box;font-family:Inter,Arial,Helvetica,sans-serif}
+    body{margin:20px;background:linear-gradient(180deg,#051428 0%, #071227 100%);color:#e6eef8}
+    .container{max-width:1000px;margin:0 auto;padding:18px}
+    header{display:flex;gap:16px;align-items:center}
+    h1{font-size:20px;margin:0}
+    .board{margin-top:18px;background:rgba(255,255,255,0.02);padding:16px;border-radius:12px;box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    .array-row{display:flex;gap:var(--gap);justify-content:center;align-items:center;padding:20px}
+    .cell{width:var(--cell-size);height:var(--cell-size);display:flex;align-items:center;justify-content:center;border-radius:10px;background:rgba(255,255,255,0.03);font-weight:700;font-size:20px;position:relative;transition:transform .35s ease,opacity .35s ease}
+    .cell.empty{opacity:0.25}
+    .cell .value{transition:opacity .25s ease,transform .25s ease}
+    .cell.slide-right{transform:translateX(calc(var(--cell-size) + var(--gap)));transition:transform .18s ease}
+    .cell.slide-left{transform:translateX(calc(-1 * (var(--cell-size) + var(--gap))));transition:transform .18s ease}
+    .cell.shrink{transform:scale(.2);opacity:0}
+    .cell.fade-in{opacity:1}
+    .cell.highlight{box-shadow:0 0 0 3px rgba(126,231,135,0.12),0 6px 20px rgba(126,231,135,0.06);border:1px solid rgba(126,231,135,0.14);}
+    .controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:12px}
+    .controls .group{background:rgba(255,255,255,0.02);padding:10px;border-radius:10px;display:flex;gap:8px;align-items:center}
+    label{font-size:13px;color:var(--muted)}
+    input[type=number], input[type=text]{width:80px;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    button{padding:8px 12px;border-radius:8px;border:0;background:linear-gradient(90deg,#115e59,#7ee787);color:#042017;font-weight:700;cursor:pointer}
+    button.secondary{background:linear-gradient(90deg,#263544,#3b4f66);color:#d7e6ff}
+    button.warn{background:linear-gradient(90deg,#7e1a1a,#ff6b6b);color:#fff}
+    .messages{margin-top:12px;min-height:24px}
+    .msg{padding:8px 12px;border-radius:8px;background:rgba(0,0,0,0.25);display:inline-block}
+    .status-row{display:flex;gap:12px;align-items:center;margin-top:12px}
+    .chip{background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:999px;font-size:13px}
+    .level{font-weight:800;color:var(--accent)}
+    .timer{font-weight:800;color:#ffd166}
+    .footer{margin-top:14px;color:var(--muted);font-size:13px}
+    @media (max-width:720px){.array-row{flex-wrap:wrap}.cell{width:52px;height:52px}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Code Breaker — The Array Heist</h1>
+      <div style="margin-left:auto" class="chip">Interactive Array Manipulation</div>
+    </header>
+
+    <div class="board">
+      <div class="array-row" id="arrayRow" aria-live="polite"></div>
+
+      <div class="controls" style="margin-top:8px">
+        <div class="group">
+          <div>
+            <label>Index (0-9)</label><br>
+            <input id="indexInput" type="number" min="0" max="9" value="0">
+          </div>
+          <div>
+            <label>Value (0-9)</label><br>
+            <input id="valueInput" type="number" min="0" max="9" value="5">
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <label style="visibility:hidden">_</label>
+            <div style="display:flex;gap:8px">
+              <button id="insertBtn">Insert</button>
+              <button id="deleteBtn" class="secondary">Delete</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="group" style="min-width:320px">
+          <div style="flex:1">
+            <label>Pattern (e.g., 2,1,4)</label><br>
+            <input id="patternInput" type="text" placeholder="2,1,4" style="width:200px">
+          </div>
+          <div style="display:flex;flex-direction:column;justify-content:center">
+            <label style="visibility:hidden">_</label>
+            <div style="display:flex;gap:8px">
+              <button id="searchBtn" class="secondary">Search Pattern</button>
+              <button id="resetBtn" class="warn">Reset</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div>
+            <label>Time Attack</label><br>
+            <button id="toggleTimer" class="secondary">Start 60s Mode</button>
+          </div>
+          <div>
+            <label>Level</label><br>
+            <select id="levelSelect">
+              <option value="1">Level 1 — 2-digit</option>
+              <option value="2" selected>Level 2 — 3-digit</option>
+              <option value="3">Level 3 — Reverse match</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="status-row">
+        <div class="chip">Secret Pattern: <span id="secretPattern" style="margin-left:6px;font-weight:800">---</span></div>
+        <div class="chip">Level: <span id="levelTag" class="level">2</span></div>
+        <div class="chip">Timer: <span id="timerTag" class="timer">--:--</span></div>
+      </div>
+
+      <div class="footer">Controls: Insert shifts right, Delete shifts left, Search visually highlights sliding window. Find the auto-generated secret pattern to clear the level.</div>
+    </div>
+  </div>
+
+  <script>
+    // ====== Game State ======
+    const SIZE = 10;
+    let arr = new Array(SIZE).fill(null); // null = empty
+    const arrayRow = document.getElementById('arrayRow');
+    const indexInput = document.getElementById('indexInput');
+    const valueInput = document.getElementById('valueInput');
+    const patternInput = document.getElementById('patternInput');
+    const messages = document.getElementById('messages');
+    const secretPatternEl = document.getElementById('secretPattern');
+    const levelSelect = document.getElementById('levelSelect');
+    const levelTag = document.getElementById('levelTag');
+    const timerTag = document.getElementById('timerTag');
+
+    let secretPattern = [];
+    let timeAttack = false;
+    let timer = null;
+    let timeLeft = 60; // seconds
+
+    // ====== Audio with WebAudio API ======
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(duration=0.08, freq=880, type='sine', vol=0.12){
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type; o.frequency.value = freq; g.gain.value = vol;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + duration);
+    }
+    function buzz(){ beep(0.18,150,'square',0.16); }
+    function fanfare(){ // simple 4-tone fanfare
+      const notes = [880,1100,1320,1760];
+      notes.forEach((n,i)=> setTimeout(()=> beep(0.12,n,'sine',0.12), i*160));
+    }
+
+    // ====== Render ======
+    function render(){
+      arrayRow.innerHTML = '';
+      for(let i=0;i<SIZE;i++){
+        const div = document.createElement('div');
+        div.className = 'cell' + (arr[i]===null? ' empty':'');
+        div.dataset.index = i;
+        const val = document.createElement('div'); val.className='value';
+        val.textContent = arr[i]===null? '' : arr[i];
+        div.appendChild(val);
+        arrayRow.appendChild(div);
+      }
+    }
+
+    // ====== Messages ======
+    function showMsg(text, danger=false){
+      messages.innerHTML = `<div class="msg" style="border-left:4px solid ${danger? 'var(--danger)':'var(--accent)'}">${text}</div>`;
+    }
+
+    // ====== Utilities ======
+    function clampIndex(i){
+      if(Number.isNaN(i)) return null;
+      i = Math.floor(i);
+      if(i<0 || i>=SIZE) return null;
+      return i;
+    }
+
+    // ====== Insert with animation ======
+    async function insertAt(index, value){
+      const i = clampIndex(index);
+      if(i===null){ showMsg('Index out of bounds!', true); buzz(); return; }
+      if(value===null || value<0 || value>9){ showMsg('Value must be 0–9', true); buzz(); return; }
+      // If last cell occupied, reject
+      if(arr[SIZE-1] !== null){ showMsg('No space to shift right — last cell occupied', true); buzz(); return; }
+
+      // shift right logically
+      for(let j=SIZE-1;j>i;j--){
+        arr[j] = arr[j-1];
+      }
+      arr[i] = value;
+
+      // visual quick animation
+      render();
+      const cells = document.querySelectorAll('.cell');
+      // briefly add slide-right to make movement feel like shifting
+      for(let j=i;j<SIZE;j++){
+        const c = cells[j];
+        c.classList.add('slide-right');
+      }
+      await delay(160);
+      for(let j=i;j<SIZE;j++){
+        const c = cells[j];
+        c.classList.remove('slide-right');
+      }
+      const target = cells[i]; target.classList.add('fade-in');
+      beep();
+      showMsg(`Inserted ${value} at index ${i}!`);
+      checkSecret();
+    }
+
+    // ====== Delete with animation ======
+    async function deleteAt(index){
+      const i = clampIndex(index);
+      if(i===null){ showMsg('Index out of bounds!', true); buzz(); return; }
+      if(arr[i] === null){ showMsg('No element at that index to delete', true); buzz(); return; }
+
+      const cells = document.querySelectorAll('.cell');
+      const c = cells[i]; if(c) c.classList.add('shrink');
+      await delay(180);
+      // shift left logically
+      for(let j=i;j<SIZE-1;j++) arr[j] = arr[j+1];
+      arr[SIZE-1] = null;
+      render();
+      showMsg(`Deleted element at index ${i}.`);
+      checkSecret();
+    }
+
+    // ====== Search pattern visually ======
+    async function searchPattern(arrToSearch, pattern, highlightOnFound=true){
+      if(!pattern || pattern.length===0){ showMsg('Enter a valid pattern (e.g., 1,2,3)', true); buzz(); return -1; }
+      const cells = document.querySelectorAll('.cell');
+      for(let start=0; start<=SIZE-pattern.length; start++){
+        // highlight window
+        for(let j=0;j<SIZE;j++) cells[j].classList.remove('highlight');
+        for(let w=0;w<pattern.length;w++){
+          const idx = start+w;
+          cells[idx] && cells[idx].classList.add('highlight');
+        }
+        await delay(260);
+        // check match
+        let ok=true;
+        for(let w=0;w<pattern.length;w++){
+          const idx = start+w;
+          if(arrToSearch[idx] === null || arrToSearch[idx] != pattern[w]){ ok=false; break; }
+        }
+        if(ok){
+          showMsg(`Pattern [${pattern.join(',')}] found at index ${start}!`);
+          if(highlightOnFound){
+            for(let j=0;j<SIZE;j++) cells[j].classList.remove('highlight');
+            for(let w=0;w<pattern.length;w++){cells[start+w] && cells[start+w].classList.add('highlight');}
+          }
+          return start;
+        }
+      }
+      // clear highlights
+      const cells2 = document.querySelectorAll('.cell'); cells2.forEach(c=>c.classList.remove('highlight'));
+      showMsg(`Pattern [${pattern.join(',')}] not found.` , true);
+      return -1;
+    }
+
+    // ====== Helpers ======
+    function parsePatternInput(text){
+      if(!text) return [];
+      return text.split(',').map(s=>s.trim()).filter(s=>s!=='').map(Number).filter(n=>!Number.isNaN(n) && n>=0 && n<=9);
+    }
+
+    function delay(ms){return new Promise(resolve=>setTimeout(resolve, ms));}
+
+    // ====== Secret pattern and levels ======
+    function generateSecretForLevel(level){
+      if(level==1){ // 2-digit
+        return [randDigit(), randDigit()];
+      } else if(level==2){ // 3-digit
+        return [randDigit(), randDigit(), randDigit()];
+      } else { // level 3 reverse match pattern length 3
+        return [randDigit(), randDigit(), randDigit()];
+      }
+    }
+    function randDigit(){ return Math.floor(Math.random()*10); }
+
+    async function checkSecret(){
+      const lvl = Number(levelSelect.value);
+      let target = secretPattern.slice();
+      if(lvl==3) target = secretPattern.slice().reverse();
+      // search silently (no highlight animation desired here? we call searchPattern which highlights)
+      const found = await searchPattern(arr, target, true);
+      if(found>=0){
+        fanfare();
+        showMsg(`Level Complete! You found the secret pattern [${target.join(',')}]`);
+        if(timeAttack){ stopTimer(); showMsg(`You cracked the code with ${timeLeft} seconds left!`); }
+        // advance level if available
+        if(lvl < 3){ levelSelect.value = lvl+1; levelChanged(); }
+        else { showMsg('All levels complete. Reset or change level to play again!'); }
+      }
+    }
+
+    // ====== Timer ======
+    function startTimer(){
+      if(timer) return;
+      timeLeft = 60; timerTag.textContent = formatTime(timeLeft);
+      timeAttack = true; document.getElementById('toggleTimer').textContent = 'Stop 60s Mode';
+      timer = setInterval(()=>{
+        timeLeft--;
+        timerTag.textContent = formatTime(timeLeft);
+        if(timeLeft<=0){ clearInterval(timer); timer=null; timeAttack=false; showMsg('Time up! Try again.', true); buzz(); document.getElementById('toggleTimer').textContent='Start 60s Mode'; timerTag.textContent='--:--'; }
+      },1000);
+    }
+    function stopTimer(){ if(timer){ clearInterval(timer); timer=null; timeAttack=false; document.getElementById('toggleTimer').textContent='Start 60s Mode'; timerTag.textContent='--:--'; }}
+    function formatTime(s){ const mm = String(Math.floor(s/60)).padStart(2,'0'); const ss = String(s%60).padStart(2,'0'); return `${mm}:${ss}`; }
+
+    // ====== Event wiring ======
+    document.getElementById('insertBtn').addEventListener('click', ()=>{ insertAt(Number(indexInput.value), Number(valueInput.value)); });
+    document.getElementById('deleteBtn').addEventListener('click', ()=>{ deleteAt(Number(indexInput.value)); });
+    document.getElementById('searchBtn').addEventListener('click', async ()=>{
+      const p = parsePatternInput(patternInput.value);
+      await searchPattern(arr,p,true);
+    });
+    document.getElementById('resetBtn').addEventListener('click', ()=>{ arr = new Array(SIZE).fill(null); render(); showMsg('Array cleared.'); stopTimer(); initSecret(); });
+    document.getElementById('toggleTimer').addEventListener('click', ()=>{ if(timer) stopTimer(); else startTimer(); });
+    levelSelect.addEventListener('change', ()=>{ levelChanged(); });
+
+    function levelChanged(){ const lvl = Number(levelSelect.value); levelTag.textContent = lvl; initSecret(); showMsg(`Switched to Level ${lvl}. Secret pattern regenerated.`); }
+
+    // ====== Initialization ======
+    function initSecret(){
+      const lvl = Number(levelSelect.value);
+      secretPattern = generateSecretForLevel(lvl);
+      if(lvl==3){ secretPatternEl.textContent = secretPattern.join(',') + ' (reverse match)'; }
+      else secretPatternEl.textContent = secretPattern.join(',');
+      render();
+    }
+
+    // keyboard convenience: Enter key triggers insert
+    document.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter') insertAt(Number(indexInput.value), Number(valueInput.value));
+    });
+
+    // on load
+    initSecret();
+    render();
+    showMsg('Welcome! Auto-generated secret pattern ready. Use Insert/Delete/Search to find it.');
+  </script>
+</body>
+</html>
